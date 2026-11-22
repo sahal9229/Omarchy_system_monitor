@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""
+Launcher executable for Omarchy System Monitor.
+"""
+import os
+import sys
+
+# Resolve project root dynamically (supports symlinks and standard install paths)
+real_script_path = os.path.realpath(__file__)
+candidate_paths = [
+    os.path.dirname(os.path.dirname(real_script_path)),
+    os.environ.get("OMARCHY_SYSMON_PATH", ""),
+    "/home/xahal/Documents/omarchy/omarchy-sysmon",
+]
+
+for p in candidate_paths:
+    if p and os.path.isdir(os.path.join(p, "src")):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        break
+
+from src.app import main
+
+if __name__ == "__main__":
+    sys.exit(main())

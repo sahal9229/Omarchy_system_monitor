@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Omarchy System Monitor
+GenericName=System Monitor
+Comment=Real-time system resource, hardware, and process monitor
+Exec=omarchy-sysmon-toggle
+Icon=org.omarchy.SystemMonitor
+Terminal=false
+Type=Application
+Categories=System;Monitor;GTK;
+StartupNotify=true
+StartupWMClass=org.omarchy.SystemMonitor
+Keywords=task;manager;system;monitor;process;cpu;memory;ram;gpu;disk;network;sensors;fan;

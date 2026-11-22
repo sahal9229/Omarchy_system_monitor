@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.sysmon",
+  "name": "System Monitor",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "System resource monitor bar button",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "SysmonWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "System Monitor",
+    "description": "Launch or focus Omarchy System Monitor",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
