@@ -231,7 +231,12 @@ class DashboardPage(Gtk.ScrolledWindow):
             c_temp = sensors.get("primary_cpu_temp_c")
             temp_str = f"{c_temp:.0f}°C" if c_temp is not None else "--"
             fan_rpm = sensors.get("primary_fan_rpm")
-            fan_str = f"{fan_rpm} RPM" if fan_rpm is not None else "Fan N/A"
+            if fan_rpm == 0:
+                fan_str = "Fan: 0 RPM (Passive)"
+            elif fan_rpm is not None:
+                fan_str = f"Fan: {fan_rpm} RPM"
+            else:
+                fan_str = "Fan: N/A"
             self.cards["temperature"].update_data(
                 primary_val=temp_str,
                 history=[c_temp or 0.0] * 60,

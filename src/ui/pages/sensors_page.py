@@ -232,13 +232,14 @@ class SensorsPage(Gtk.ScrolledWindow):
         fan_rpm = sensors.get("primary_fan_rpm")
         if fan_rpm is not None:
             if fan_rpm == 0:
-                self.val_fan.set_label("0 RPM (Idle / Passive)")
-                self.row_fan.set_subtitle("Fan stopped; temperatures within passive cooling limits")
+                self.val_fan.set_label("0 RPM (Passive Cooling)")
+                self.row_fan.set_subtitle("Fan idle: Dell EC firmware turns fan off below ~60°C; spins up automatically under load")
             else:
-                self.val_fan.set_label(f"{fan_rpm} RPM")
-                self.row_fan.set_subtitle("Active cooling engaged")
+                self.val_fan.set_label(f"{fan_rpm} RPM (Active)")
+                self.row_fan.set_subtitle("Fan active: spinning to dissipate system thermal load")
         else:
             self.val_fan.set_label("Unavailable")
+            self.row_fan.set_subtitle("No fan tachometer sensor detected")
 
         # 3. Storage SSD
         ssd_temp = sensors.get("ssd_composite_c")

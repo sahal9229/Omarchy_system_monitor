@@ -5,7 +5,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "omarchy.sysmon"
+  moduleName: "sahal.sysmon"
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -17,7 +17,7 @@ BarWidget {
     text: "\uf201"
     slotSize: Style.bar.statusSlot
     tooltipText: "Omarchy System Monitor"
-    onPressed: {
+    onPressed: function(b) {
       if (root.bar) root.bar.run("omarchy-sysmon-toggle")
     }
   }
