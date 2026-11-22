@@ -14,7 +14,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\uf201"
+    text: "󰈐"
     slotSize: Style.bar.statusSlot
     tooltipText: "Omarchy System Monitor"
     onPressed: function(b) {
