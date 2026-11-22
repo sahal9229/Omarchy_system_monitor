@@ -118,8 +118,14 @@ class ProcessCollector(BaseCollector):
                 # Runtime in seconds
                 process_runtime_sec = max(0.0, uptime - (starttime / float(self._clk_tck)))
 
-                # Command line
+                # Executable path and command line
                 cmdline = comm
+                exe_path = ""
+                try:
+                    exe_path = os.readlink(f"{proc_dir}/exe")
+                except Exception:
+                    exe_path = ""
+
                 try:
                     with open(f"{proc_dir}/cmdline", "r", encoding="utf-8", errors="replace") as f:
                         raw_cmd = f.read().replace("\x00", " ").strip()
@@ -143,6 +149,7 @@ class ProcessCollector(BaseCollector):
                     "pid": pid,
                     "ppid": ppid,
                     "name": comm,
+                    "exe_path": exe_path or cmdline.split()[0] if cmdline else comm,
                     "cmdline": cmdline,
                     "user": user,
                     "uid": uid,

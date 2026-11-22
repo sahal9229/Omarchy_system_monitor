@@ -34,8 +34,8 @@ class MainWindow(Adw.ApplicationWindow):
         super().__init__(application=app, title="Omarchy System Monitor")
         self.config_mgr = config_mgr
 
-        self.set_default_size(1020, 700)
-        self.set_size_request(780, 520)
+        self.set_default_size(1040, 700)
+        self.set_size_request(420, 360)
 
         # Apply saved theme
         self._apply_theme(self.config_mgr.get("theme", "system"))
@@ -55,8 +55,8 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Split View for Sidebar + Content
         self.split_view = Adw.NavigationSplitView()
-        self.split_view.set_min_sidebar_width(210)
-        self.split_view.set_max_sidebar_width(260)
+        self.split_view.set_min_sidebar_width(170)
+        self.split_view.set_max_sidebar_width(220)
 
         # Build Content Stack first
         self.stack = Adw.ViewStack()
@@ -93,6 +93,17 @@ class MainWindow(Adw.ApplicationWindow):
 
         content_page = Adw.NavigationPage.new(self.stack, "Content")
         self.split_view.set_content(content_page)
+
+        # Responsive Breakpoints for Hyprland window tiling
+        bp_medium = Adw.Breakpoint.new(Adw.breakpoint_condition_parse("max-width: 1150px"))
+        bp_medium.connect("apply", lambda b: self.page_processes.set_responsive_layout(1000))
+        bp_medium.connect("unapply", lambda b: self.page_processes.set_responsive_layout(1300))
+        self.add_breakpoint(bp_medium)
+
+        bp_compact = Adw.Breakpoint.new(Adw.breakpoint_condition_parse("max-width: 820px"))
+        bp_compact.connect("apply", lambda b: self.page_processes.set_responsive_layout(750))
+        bp_compact.connect("unapply", lambda b: self.page_processes.set_responsive_layout(1000))
+        self.add_breakpoint(bp_compact)
 
         self.toast_overlay.set_child(self.split_view)
         self.set_content(self.toast_overlay)
@@ -227,6 +238,10 @@ class MainWindow(Adw.ApplicationWindow):
         }
 
         # Update active and relevant pages
+        current_w = self.get_width()
+        if current_w > 0:
+            self.page_processes.set_responsive_layout(current_w)
+
         self.page_dashboard.update_metrics(shared_data)
         
         current_page = self.stack.get_visible_child_name()
