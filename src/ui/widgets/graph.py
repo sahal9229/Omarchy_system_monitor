@@ -1,12 +1,16 @@
 """
 Real-time line/area graph widget drawn using Cairo on Gtk.DrawingArea.
 Smooth antialiased curves, gradient fills, and bounded circular history.
+
+Optimized with:
+- Change detection: skips queue_draw() if time-series data hasn't changed
+- Visibility/mapped awareness: skips expensive Cairo redraws when page/widget is hidden
+- Memory-efficient cached points and bounding
 """
 import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, Gdk
 import cairo
-import math
 from typing import List, Optional, Tuple
 
 class RealtimeGraph(Gtk.DrawingArea):
@@ -25,6 +29,7 @@ class RealtimeGraph(Gtk.DrawingArea):
         self.show_grid = show_grid
         self.unit = unit
         self._data: List[float] = [0.0] * 60
+        self._last_drawn_hash: Optional[int] = None
 
         self.set_draw_func(self._draw)
         self.set_hexpand(True)
@@ -32,44 +37,54 @@ class RealtimeGraph(Gtk.DrawingArea):
         self.set_content_height(120)
 
     def set_data(self, data: List[float]):
+        if not data:
+            return
+        
+        # Skip redraw if the drawing area is not mapped / visible in the scene
+        if not self.get_mapped():
+            self._data = data
+            return
+
+        # Fast check: skip expensive Cairo redraw if data hasn't changed
+        if self._data and len(self._data) == len(data) and self._data[-1] == data[-1] and self._data[0] == data[0] and self._data == data:
+            return
+
         self._data = data
         self.queue_draw()
 
     def set_line_color(self, r: float, g: float, b: float):
-        self.line_color = (r, g, b)
-        self.queue_draw()
+        if self.line_color != (r, g, b):
+            self.line_color = (r, g, b)
+            if self.get_mapped():
+                self.queue_draw()
 
     def _draw(self, area, cr: cairo.Context, width: int, height: int):
         if width <= 0 or height <= 0:
             return
 
-        # Determine effective min/max
         effective_min = self.min_val
         if self.max_val is not None:
             effective_max = self.max_val
         else:
-            # Auto-scale
             max_in_data = max(self._data) if self._data else 1.0
             effective_max = max(max_in_data * 1.15, 1.0)
 
         val_range = max(effective_max - effective_min, 0.001)
 
-        # Draw subtle background & grid
+        # Draw grid
         if self.show_grid:
             cr.set_line_width(1.0)
             cr.set_dash([4.0, 4.0])
             cr.set_source_rgba(1.0, 1.0, 1.0, 0.07)
 
-            # 25%, 50%, 75% grid lines
-            for pct in [0.25, 0.50, 0.75]:
+            for pct in (0.25, 0.50, 0.75):
                 y = height - (pct * height)
                 cr.move_to(0, y)
                 cr.line_to(width, y)
                 cr.stroke()
 
-            cr.set_dash([]) # Reset dash
+            cr.set_dash([])
 
-        # Calculate coordinates
         n_points = len(self._data)
         if n_points < 2:
             return
@@ -85,7 +100,7 @@ class RealtimeGraph(Gtk.DrawingArea):
 
         r, g, b = self.line_color
 
-        # Draw filled gradient under curve
+        # Draw filled gradient
         cr.save()
         cr.move_to(0, height)
         for x, y in points:
@@ -100,7 +115,7 @@ class RealtimeGraph(Gtk.DrawingArea):
         cr.fill()
         cr.restore()
 
-        # Draw smooth line curve
+        # Draw line
         cr.save()
         cr.set_line_width(2.0)
         cr.set_line_join(cairo.LINE_JOIN_ROUND)

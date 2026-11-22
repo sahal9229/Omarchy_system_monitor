@@ -1,10 +1,15 @@
 """
-Network performance and interface metrics collector.
-Parses /proc/net/dev and /sys/class/net to track download/upload rates and totals.
+Network metrics collector.
+Parses /proc/net/dev to calculate real-time download (Rx) and upload (Tx) bitrates.
+Tracks active network interfaces and bandwidth consumption.
+
+Optimized with:
+- Minimal allocations in line parsing
+- Cached interface state queries
 """
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple
 from .base import BaseCollector, RingBuffer
 
 class NetworkCollector(BaseCollector):
@@ -15,45 +20,42 @@ class NetworkCollector(BaseCollector):
         self.tx_speed_history = RingBuffer(history_len, 0.0)
         
         # Interface -> (rx_bytes, tx_bytes, timestamp)
-        self._prev_stats: Dict[str, tuple] = {}
-        self._prime_net_dev()
+        self._prev_stats: Dict[str, Tuple[int, int, float]] = {}
+        self._state_cache: Dict[str, Tuple[str, float]] = {}
+        self._prime_netdev()
 
-    def _prime_net_dev(self):
+    def _prime_netdev(self):
         now = time.time()
         try:
             with open("/proc/net/dev", "r") as f:
-                lines = f.readlines()[2:] # Skip header lines
-                for line in lines:
-                    parts = line.split(":")
-                    if len(parts) == 2:
-                        iface = parts[0].strip()
-                        vals = parts[1].strip().split()
-                        rx_bytes = int(vals[0])
-                        tx_bytes = int(vals[8])
-                        self._prev_stats[iface] = (rx_bytes, tx_bytes, now)
+                lines = f.readlines()
+            for line in lines[2:]:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    iface = parts[0].strip()
+                    metrics = parts[1].split()
+                    if len(metrics) >= 9:
+                        rx_b = int(metrics[0])
+                        tx_b = int(metrics[8])
+                        self._prev_stats[iface] = (rx_b, tx_b, now)
         except Exception as e:
             self.error = f"Failed to prime /proc/net/dev: {e}"
 
-    def _get_interface_type(self, iface: str) -> str:
-        if iface.startswith("wl") or iface.startswith("wlan"):
-            return "Wi-Fi"
-        elif iface.startswith("en") or iface.startswith("eth"):
-            return "Ethernet"
-        elif iface == "lo":
-            return "Loopback"
-        elif iface.startswith("tun") or iface.startswith("wg") or iface.startswith("tap"):
-            return "VPN / Tunnel"
-        return "Network Interface"
-
-    def _get_interface_status(self, iface: str) -> str:
+    def _get_operstate(self, iface: str, now: float) -> str:
+        # Cache interface state for 3 seconds
+        cached = self._state_cache.get(iface)
+        if cached and (now - cached[1] < 3.0):
+            return cached[0]
+        
         state_file = f"/sys/class/net/{iface}/operstate"
+        state = "unknown"
         try:
-            if os.path.exists(state_file):
-                with open(state_file, "r") as f:
-                    return f.read().strip()
+            with open(state_file, "r") as f:
+                state = f.read().strip()
         except Exception:
-            pass
-        return "unknown"
+            state = "unknown"
+        self._state_cache[iface] = (state, now)
+        return state
 
     def update(self) -> dict:
         now = time.time()
@@ -61,54 +63,49 @@ class NetworkCollector(BaseCollector):
 
         total_rx_bps = 0.0
         total_tx_bps = 0.0
-        interfaces = []
+        interfaces: List[dict] = []
 
         try:
             with open("/proc/net/dev", "r") as f:
-                lines = f.readlines()[2:]
+                for line in f:
+                    if ":" not in line:
+                        continue
+                    parts = line.split(":", 1)
+                    iface = parts[0].strip()
+                    if iface == "lo":
+                        continue
 
-            for line in lines:
-                parts = line.split(":")
-                if len(parts) != 2:
-                    continue
-                iface = parts[0].strip()
-                vals = parts[1].strip().split()
-                rx_bytes = int(vals[0])
-                rx_packets = int(vals[1])
-                tx_bytes = int(vals[8])
-                tx_packets = int(vals[9])
+                    metrics = parts[1].split()
+                    if len(metrics) < 9:
+                        continue
 
-                rx_rate = 0.0
-                tx_rate = 0.0
+                    rx_bytes = int(metrics[0])
+                    tx_bytes = int(metrics[8])
 
-                if iface in self._prev_stats:
-                    prev_rx, prev_tx, prev_t = self._prev_stats[iface]
-                    dt = now - prev_t
-                    if dt > 0:
-                        rx_rate = max(0.0, (rx_bytes - prev_rx) / dt)
-                        tx_rate = max(0.0, (tx_bytes - prev_tx) / dt)
+                    rx_bps = 0.0
+                    tx_bps = 0.0
 
-                self._prev_stats[iface] = (rx_bytes, tx_bytes, now)
+                    if iface in self._prev_stats:
+                        prev_rx, prev_tx, prev_t = self._prev_stats[iface]
+                        dt = now - prev_t
+                        if dt > 0:
+                            rx_bps = max(0.0, ((rx_bytes - prev_rx) * 8.0) / dt)
+                            tx_bps = max(0.0, ((tx_bytes - prev_tx) * 8.0) / dt)
+                            total_rx_bps += rx_bps
+                            total_tx_bps += tx_bps
 
-                # Ignore loopback for aggregated speed
-                if iface != "lo":
-                    total_rx_bps += rx_rate
-                    total_tx_bps += tx_rate
+                    self._prev_stats[iface] = (rx_bytes, tx_bytes, now)
 
-                operstate = self._get_interface_status(iface)
-                iface_type = self._get_interface_type(iface)
+                    state = self._get_operstate(iface, now)
 
-                interfaces.append({
-                    "name": iface,
-                    "type": iface_type,
-                    "status": operstate,
-                    "rx_speed_bps": rx_rate,
-                    "tx_speed_bps": tx_rate,
-                    "total_rx_bytes": rx_bytes,
-                    "total_tx_bytes": tx_bytes,
-                    "rx_packets": rx_packets,
-                    "tx_packets": tx_packets,
-                })
+                    interfaces.append({
+                        "name": iface,
+                        "state": state,
+                        "rx_bps": rx_bps,
+                        "tx_bps": tx_bps,
+                        "total_rx_bytes": rx_bytes,
+                        "total_tx_bytes": tx_bytes,
+                    })
 
         except Exception as e:
             self.error = f"Error reading /proc/net/dev: {e}"

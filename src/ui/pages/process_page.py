@@ -400,98 +400,169 @@ class ProcessPage(Gtk.Box):
                 self.d_pid_badge.set_label("TERMINATED")
                 self.end_btn.set_sensitive(False)
 
+    def _create_process_row(self, p: dict) -> Gtk.ListBoxRow:
+        row = Gtk.ListBoxRow()
+        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        row_box.set_margin_start(8)
+        row_box.set_margin_end(8)
+        row_box.set_margin_top(4)
+        row_box.set_margin_bottom(4)
+
+        # 1. Process Name (Prominent, hexpand=True, min width 150)
+        name_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        name_box.set_hexpand(True)
+        name_box.set_size_request(150, -1)
+        name_box.set_halign(Gtk.Align.START)
+
+        name_lbl = Gtk.Label(label=p["name"])
+        name_lbl.set_halign(Gtk.Align.START)
+        name_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        name_lbl.add_css_class("heading")
+        name_box.append(name_lbl)
+        row_box.append(name_box)
+
+        # 2. Memory (RAM) Column (width 135, right aligned, with units and %)
+        mem_formatted = self._format_memory(p["memory_bytes"])
+        mem_pct = p["memory_percent"]
+        mem_lbl = Gtk.Label(label=f"{mem_formatted} ({mem_pct:.1f}%)")
+        mem_lbl.set_size_request(135, -1)
+        mem_lbl.set_halign(Gtk.Align.END)
+        mem_lbl.add_css_class("caption")
+        mem_lbl.add_css_class("dim-label")
+        row_box.append(mem_lbl)
+
+        # 3. CPU Usage Column (width 95, right aligned, with % symbol)
+        cpu_val = p["cpu_percent"]
+        cpu_lbl = Gtk.Label(label=f"{cpu_val:.1f}%")
+        cpu_lbl.set_size_request(95, -1)
+        cpu_lbl.set_halign(Gtk.Align.END)
+        cpu_lbl.add_css_class("caption")
+        cpu_lbl.add_css_class("heading")
+        if cpu_val >= 20.0:
+            cpu_lbl.add_css_class("accent")
+        row_box.append(cpu_lbl)
+
+        # 4. Status Column (width 75, start aligned, hidden in compact mode)
+        status_lbl = Gtk.Label(label=p["state"])
+        status_lbl.set_size_request(75, -1)
+        status_lbl.set_halign(Gtk.Align.START)
+        status_lbl.add_css_class("caption")
+        if p["state"] == "Running":
+            status_lbl.add_css_class("accent")
+        else:
+            status_lbl.add_css_class("dim-label")
+        status_lbl.set_visible(self.layout_mode != "compact")
+        row_box.append(status_lbl)
+
+        # 5. PID Column (width 65, right aligned)
+        pid_lbl = Gtk.Label(label=str(p["pid"]))
+        pid_lbl.set_size_request(65, -1)
+        pid_lbl.set_halign(Gtk.Align.END)
+        pid_lbl.add_css_class("caption")
+        pid_lbl.add_css_class("dim-label")
+        row_box.append(pid_lbl)
+
+        # 6. User Column (width 80, start aligned, hidden in compact mode)
+        user_lbl = Gtk.Label(label=p["user"])
+        user_lbl.set_size_request(80, -1)
+        user_lbl.set_halign(Gtk.Align.START)
+        user_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        user_lbl.add_css_class("caption")
+        user_lbl.add_css_class("dim-label")
+        user_lbl.set_visible(self.layout_mode != "compact")
+        row_box.append(user_lbl)
+
+        row.set_child(row_box)
+        row.name_lbl = name_lbl
+        row.mem_lbl = mem_lbl
+        row.cpu_lbl = cpu_lbl
+        row.status_lbl = status_lbl
+        row.pid_lbl = pid_lbl
+        row.user_lbl = user_lbl
+        row.pid = p["pid"]
+        row.proc_data = p
+        return row
+
+    def _update_process_row(self, row: Gtk.ListBoxRow, p: dict):
+        row.pid = p["pid"]
+        row.proc_data = p
+
+        # 1. Name
+        if row.name_lbl.get_label() != p["name"]:
+            row.name_lbl.set_label(p["name"])
+
+        # 2. Memory
+        mem_formatted = self._format_memory(p["memory_bytes"])
+        mem_pct = p["memory_percent"]
+        new_mem = f"{mem_formatted} ({mem_pct:.1f}%)"
+        if row.mem_lbl.get_label() != new_mem:
+            row.mem_lbl.set_label(new_mem)
+
+        # 3. CPU
+        cpu_val = p["cpu_percent"]
+        new_cpu = f"{cpu_val:.1f}%"
+        if row.cpu_lbl.get_label() != new_cpu:
+            row.cpu_lbl.set_label(new_cpu)
+            if cpu_val >= 20.0:
+                row.cpu_lbl.add_css_class("accent")
+            else:
+                row.cpu_lbl.remove_css_class("accent")
+
+        # 4. Status
+        if row.status_lbl.get_label() != p["state"]:
+            row.status_lbl.set_label(p["state"])
+            if p["state"] == "Running":
+                row.status_lbl.remove_css_class("dim-label")
+                row.status_lbl.add_css_class("accent")
+            else:
+                row.status_lbl.remove_css_class("accent")
+                row.status_lbl.add_css_class("dim-label")
+        row.status_lbl.set_visible(self.layout_mode != "compact")
+
+        # 5. PID
+        new_pid = str(p["pid"])
+        if row.pid_lbl.get_label() != new_pid:
+            row.pid_lbl.set_label(new_pid)
+
+        # 6. User
+        if row.user_lbl.get_label() != p["user"]:
+            row.user_lbl.set_label(p["user"])
+        row.user_lbl.set_visible(self.layout_mode != "compact")
+
     def _render_rows(self):
-        # Clear existing rows
+        target_procs = self.filtered_processes[:100]
+        num_target = len(target_procs)
+
+        # Gather existing rows from listbox
+        existing_rows = []
+        i = 0
         while True:
-            row = self.listbox.get_row_at_index(0)
+            row = self.listbox.get_row_at_index(i)
             if row is None:
                 break
-            self.listbox.remove(row)
+            existing_rows.append(row)
+            i += 1
 
         target_row_to_select = None
 
-        # Display top 100 matching processes for responsiveness
-        for p in self.filtered_processes[:100]:
-            row = Gtk.ListBoxRow()
-            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            row_box.set_margin_start(8)
-            row_box.set_margin_end(8)
-            row_box.set_margin_top(4)
-            row_box.set_margin_bottom(4)
-
-            # 1. Process Name (Prominent, hexpand=True, min width 150)
-            name_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-            name_box.set_hexpand(True)
-            name_box.set_size_request(150, -1)
-            name_box.set_halign(Gtk.Align.START)
-
-            name_lbl = Gtk.Label(label=p["name"])
-            name_lbl.set_halign(Gtk.Align.START)
-            name_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-            name_lbl.add_css_class("heading")
-            name_box.append(name_lbl)
-            row_box.append(name_box)
-
-            # 2. Memory (RAM) Column (width 135, right aligned, with units and %)
-            mem_formatted = self._format_memory(p["memory_bytes"])
-            mem_pct = p["memory_percent"]
-            mem_lbl = Gtk.Label(label=f"{mem_formatted} ({mem_pct:.1f}%)")
-            mem_lbl.set_size_request(135, -1)
-            mem_lbl.set_halign(Gtk.Align.END)
-            mem_lbl.add_css_class("caption")
-            mem_lbl.add_css_class("dim-label")
-            row_box.append(mem_lbl)
-
-            # 3. CPU Usage Column (width 95, right aligned, with % symbol)
-            cpu_val = p["cpu_percent"]
-            cpu_lbl = Gtk.Label(label=f"{cpu_val:.1f}%")
-            cpu_lbl.set_size_request(95, -1)
-            cpu_lbl.set_halign(Gtk.Align.END)
-            cpu_lbl.add_css_class("caption")
-            cpu_lbl.add_css_class("heading")
-            if cpu_val >= 20.0:
-                cpu_lbl.add_css_class("accent")
-            row_box.append(cpu_lbl)
-
-            # 4. Status Column (width 75, start aligned, hidden in compact mode)
-            status_lbl = Gtk.Label(label=p["state"])
-            status_lbl.set_size_request(75, -1)
-            status_lbl.set_halign(Gtk.Align.START)
-            status_lbl.add_css_class("caption")
-            if p["state"] == "Running":
-                status_lbl.add_css_class("accent")
+        # Update rows in place or append new ones
+        for idx, p in enumerate(target_procs):
+            if idx < len(existing_rows):
+                row = existing_rows[idx]
+                self._update_process_row(row, p)
             else:
-                status_lbl.add_css_class("dim-label")
-            status_lbl.set_visible(self.layout_mode != "compact")
-            row_box.append(status_lbl)
-
-            # 5. PID Column (width 65, right aligned)
-            pid_lbl = Gtk.Label(label=str(p["pid"]))
-            pid_lbl.set_size_request(65, -1)
-            pid_lbl.set_halign(Gtk.Align.END)
-            pid_lbl.add_css_class("caption")
-            pid_lbl.add_css_class("dim-label")
-            row_box.append(pid_lbl)
-
-            # 6. User Column (width 80, start aligned, hidden in compact mode)
-            user_lbl = Gtk.Label(label=p["user"])
-            user_lbl.set_size_request(80, -1)
-            user_lbl.set_halign(Gtk.Align.START)
-            user_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-            user_lbl.add_css_class("caption")
-            user_lbl.add_css_class("dim-label")
-            user_lbl.set_visible(self.layout_mode != "compact")
-            row_box.append(user_lbl)
-
-            row.set_child(row_box)
-            row.pid = p["pid"]
-            row.proc_data = p
-            self.listbox.append(row)
+                row = self._create_process_row(p)
+                self.listbox.append(row)
 
             if self.selected_pid == p["pid"]:
                 target_row_to_select = row
 
-        if target_row_to_select:
+        # Remove excess rows
+        if len(existing_rows) > num_target:
+            for r in existing_rows[num_target:]:
+                self.listbox.remove(r)
+
+        if target_row_to_select and self.listbox.get_selected_row() != target_row_to_select:
             self.listbox.select_row(target_row_to_select)
 
     def _on_row_selected(self, listbox, row):

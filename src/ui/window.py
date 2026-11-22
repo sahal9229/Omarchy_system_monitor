@@ -7,6 +7,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib, Gdk
 import time
+import threading
 
 from ..config import ConfigManager
 from ..collectors.cpu import CPUCollector
@@ -36,6 +37,16 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.set_default_size(1040, 700)
         self.set_size_request(420, 360)
+
+        # Polling & Worker Thread
+        self._poll_timer_id = None
+        self._last_proc_tick = 0.0
+        self._running = True
+        self._latest_shared_data = {}
+        self._wake_event = threading.Event()
+        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker_thread.start()
+        self.connect("close-request", self._on_close_request)
 
         # Apply saved theme
         self._apply_theme(self.config_mgr.get("theme", "system"))
@@ -108,12 +119,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast_overlay.set_child(self.split_view)
         self.set_content(self.toast_overlay)
 
-        # Polling Timer Setup
-        self._poll_timer_id = None
-        self._last_proc_tick = 0.0
+        # Start timer and initial tick
         self._setup_timer()
-
-        # Initial Tick
         self._on_poll_tick()
 
     def _apply_theme(self, theme_str: str):
@@ -188,9 +195,23 @@ class MainWindow(Adw.ApplicationWindow):
 
         return box
 
+    def _on_close_request(self, window):
+        self._running = False
+        self._wake_event.set()
+        if self._poll_timer_id:
+            GLib.source_remove(self._poll_timer_id)
+            self._poll_timer_id = None
+        return False
+
     def _on_nav_selected(self, listbox, row):
         if row and hasattr(row, "tag"):
             self.stack.set_visible_child_name(row.tag)
+            if row.tag == "processes":
+                # Immediately wake worker to ensure up-to-date process list upon navigation
+                self._last_proc_tick = 0.0
+                self._wake_event.set()
+            elif self._latest_shared_data:
+                self._update_visible_page(row.tag, self._latest_shared_data)
 
     def navigate_to_page(self, page_name: str):
         if page_name in self.sidebar_rows:
@@ -199,6 +220,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _setup_timer(self):
         if self._poll_timer_id:
             GLib.source_remove(self._poll_timer_id)
+            self._poll_timer_id = None
         
         interval_sec = max(0.5, float(self.config_mgr.get("refresh_interval_sec", 1.0)))
         interval_ms = int(interval_sec * 1000)
@@ -208,58 +230,92 @@ class MainWindow(Adw.ApplicationWindow):
         self._setup_timer()
 
     def _on_poll_tick(self) -> bool:
-        now = time.time()
+        if not self._running:
+            return False
 
-        # Shared metric collection: collected once per tick
-        cpu_data = self.cpu_collector.update()
-        mem_data = self.mem_collector.update()
-        gpu_data = self.gpu_collector.update()
-        disk_data = self.disk_collector.update()
-        net_data = self.net_collector.update()
-        bat_data = self.bat_collector.update()
-        sensors_data = self.sensors_collector.update()
+        # If window is unmapped / minimized, dynamically throttle collection to save CPU
+        if not self.get_mapped():
+            self._unmapped_tick_count = getattr(self, "_unmapped_tick_count", 0) + 1
+            if self._unmapped_tick_count % 3 != 0:
+                return True
 
-        # Process collection on configured interval
-        proc_interval = float(self.config_mgr.get("process_refresh_interval_sec", 2.0))
-        proc_data = {}
-        if now - self._last_proc_tick >= proc_interval:
-            self._last_proc_tick = now
-            proc_data = self.proc_collector.update()
+        self._wake_event.set()
+        return True
 
-        shared_data = {
-            "cpu": cpu_data,
-            "memory": mem_data,
-            "gpu": gpu_data,
-            "disk": disk_data,
-            "network": net_data,
-            "battery": bat_data,
-            "sensors": sensors_data,
-            "process": proc_data,
-        }
+    def _worker_loop(self):
+        while self._running:
+            # Wait for wake trigger or timeout fallback
+            self._wake_event.wait(timeout=2.0)
+            self._wake_event.clear()
+            if not self._running:
+                break
 
-        # Update active and relevant pages
+            now = time.time()
+            try:
+                cpu_data = self.cpu_collector.update()
+                mem_data = self.mem_collector.update()
+                gpu_data = self.gpu_collector.update()
+                disk_data = self.disk_collector.update()
+                net_data = self.net_collector.update()
+                bat_data = self.bat_collector.update()
+                sensors_data = self.sensors_collector.update()
+
+                proc_interval = float(self.config_mgr.get("process_refresh_interval_sec", 2.0))
+                current_page = self.stack.get_visible_child_name()
+                effective_proc_interval = proc_interval if current_page == "processes" else 10.0
+
+                proc_data = {}
+                if now - self._last_proc_tick >= effective_proc_interval or not self.page_processes.raw_processes:
+                    self._last_proc_tick = now
+                    proc_data = self.proc_collector.update()
+
+                shared_data = {
+                    "cpu": cpu_data,
+                    "memory": mem_data,
+                    "gpu": gpu_data,
+                    "disk": disk_data,
+                    "network": net_data,
+                    "battery": bat_data,
+                    "sensors": sensors_data,
+                    "process": proc_data,
+                }
+
+                if self._running:
+                    GLib.idle_add(self._apply_metrics_on_ui, shared_data)
+            except Exception:
+                pass
+
+    def _update_visible_page(self, page_name: str, shared_data: dict):
+        if page_name == "dashboard":
+            self.page_dashboard.update_metrics(shared_data)
+        elif page_name == "cpu":
+            self.page_cpu.update_metrics(shared_data)
+        elif page_name == "memory":
+            self.page_memory.update_metrics(shared_data)
+        elif page_name == "gpu":
+            self.page_gpu.update_metrics(shared_data)
+        elif page_name == "disk":
+            self.page_disk.update_metrics(shared_data)
+        elif page_name == "network":
+            self.page_network.update_metrics(shared_data)
+        elif page_name == "battery":
+            self.page_battery.update_metrics(shared_data)
+        elif page_name == "sensors":
+            self.page_sensors.update_metrics(shared_data)
+        elif page_name == "processes":
+            if shared_data.get("process") or not self.page_processes.raw_processes:
+                self.page_processes.update_metrics(shared_data)
+
+    def _apply_metrics_on_ui(self, shared_data: dict):
+        if not self._running:
+            return
+
+        self._latest_shared_data = shared_data
+
         current_w = self.get_width()
-        if current_w > 0:
+        if current_w > 0 and current_w != getattr(self, "_last_window_w", 0):
+            self._last_window_w = current_w
             self.page_processes.set_responsive_layout(current_w)
 
-        self.page_dashboard.update_metrics(shared_data)
-        
         current_page = self.stack.get_visible_child_name()
-        if current_page == "cpu":
-            self.page_cpu.update_metrics(shared_data)
-        elif current_page == "memory":
-            self.page_memory.update_metrics(shared_data)
-        elif current_page == "gpu":
-            self.page_gpu.update_metrics(shared_data)
-        elif current_page == "disk":
-            self.page_disk.update_metrics(shared_data)
-        elif current_page == "network":
-            self.page_network.update_metrics(shared_data)
-        elif current_page == "battery":
-            self.page_battery.update_metrics(shared_data)
-        elif current_page == "sensors":
-            self.page_sensors.update_metrics(shared_data)
-        elif current_page == "processes" and proc_data:
-            self.page_processes.update_metrics(shared_data)
-
-        return True
+        self._update_visible_page(current_page, shared_data)

@@ -83,6 +83,8 @@ class MetricCard(Gtk.Button):
             self.navigate_cb(self.on_click_page)
 
     def update_data(self, primary_val: str, history: List[float], subtitle: str):
-        self.val_label.set_label(primary_val)
-        self.subtitle_label.set_label(subtitle)
+        if self.val_label.get_label() != primary_val:
+            self.val_label.set_label(primary_val)
+        if self.subtitle_label.get_label() != subtitle:
+            self.subtitle_label.set_label(subtitle)
         self.graph.set_data(history)
