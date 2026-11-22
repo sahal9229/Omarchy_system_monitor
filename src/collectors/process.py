@@ -22,8 +22,8 @@ class ProcessCollector(BaseCollector):
         self._user_cache: Dict[int, str] = {}
         # PID -> (utime + stime, timestamp)
         self._prev_proc_times: Dict[int, Tuple[float, float]] = {}
-        # PID -> (starttime, name, user, uid, ppid, exe_path, cmdline)
-        self._proc_meta_cache: Dict[int, Tuple[int, str, str, int, int, str, str]] = {}
+        # PID -> (starttime, name, user, uid, ppid, exe_path, cmdline, role)
+        self._proc_meta_cache: Dict[int, Tuple[int, str, str, int, int, str, str, str]] = {}
         
         self._clk_tck = os.sysconf(os.sysconf_names.get("SC_CLK_TCK", "SC_CLK_TCK")) or 100
         self._page_size = os.sysconf(os.sysconf_names.get("SC_PAGE_SIZE", "SC_PAGE_SIZE")) or 4096
@@ -39,6 +39,31 @@ class ProcessCollector(BaseCollector):
             "X": "Dead",
             "I": "Idle"
         }
+
+    @staticmethod
+    def _detect_role(name: str, cmdline: str) -> str:
+        if not cmdline:
+            return ""
+        lower_cmd = cmdline.lower()
+        if "--type=renderer" in lower_cmd:
+            return "Tab / Renderer"
+        elif "--type=gpu-process" in lower_cmd:
+            return "GPU Process"
+        elif "--type=utility" in lower_cmd:
+            if "network.mojom" in lower_cmd:
+                return "Network Service"
+            elif "storage.mojom" in lower_cmd:
+                return "Storage Service"
+            elif "audio.mojom" in lower_cmd:
+                return "Audio Service"
+            return "Utility Service"
+        elif "--type=zygote" in lower_cmd:
+            return "Zygote"
+        elif "crashpad" in lower_cmd:
+            return "Crashpad Handler"
+        elif any(b in name.lower() for b in ("chrome", "chromium", "brave", "firefox", "electron", "code")):
+            return "Main Process"
+        return ""
 
     def _get_total_memory(self) -> int:
         try:
@@ -134,7 +159,7 @@ class ProcessCollector(BaseCollector):
                 # Static metadata: use cache if PID and starttime match
                 cached = meta_cache.get(pid)
                 if cached and cached[0] == starttime:
-                    _, name, user, uid, ppid, exe_path, cmdline = cached
+                    _, name, user, uid, ppid, exe_path, cmdline, role = cached
                 else:
                     # New or recycled PID: discover static attributes
                     # 1. UID via stat() of the proc dir without opening /proc/pid/status
@@ -167,7 +192,9 @@ class ProcessCollector(BaseCollector):
                     elif not exe_path:
                         exe_path = comm
 
-                new_meta_cache[pid] = (starttime, name, user, uid, ppid, exe_path, cmdline)
+                    role = self._detect_role(name, cmdline)
+
+                new_meta_cache[pid] = (starttime, name, user, uid, ppid, exe_path, cmdline, role)
 
                 mem_pct = (rss_bytes / total_mem) * 100.0
                 process_runtime_sec = max(0.0, uptime - (starttime / clk_tck))
@@ -180,6 +207,7 @@ class ProcessCollector(BaseCollector):
                     "cmdline": cmdline,
                     "user": user,
                     "uid": uid,
+                    "role": role,
                     "cpu_percent": round(cpu_pct, 1),
                     "memory_bytes": rss_bytes,
                     "memory_percent": round(mem_pct, 1),
@@ -199,6 +227,21 @@ class ProcessCollector(BaseCollector):
             "processes": processes,
             "total_count": len(processes),
         }
+
+    @classmethod
+    def terminate_processes(cls, pids: List[int], sig: signal.Signals = signal.SIGTERM) -> Tuple[bool, str]:
+        """Safely terminate multiple user-owned processes in an application group."""
+        success_count = 0
+        err_msg = ""
+        for pid in pids:
+            ok, msg = cls.terminate_process(pid, sig)
+            if ok:
+                success_count += 1
+            elif not err_msg:
+                err_msg = msg
+        if success_count > 0:
+            return True, f"Successfully terminated {success_count} processes."
+        return False, err_msg or "Failed to terminate selected processes."
 
     @staticmethod
     def terminate_process(pid: int, sig: signal.Signals = signal.SIGTERM) -> Tuple[bool, str]:
