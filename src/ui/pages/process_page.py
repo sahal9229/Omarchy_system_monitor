@@ -95,28 +95,28 @@ class ProcessPage(Gtk.Box):
         self.header_row.set_margin_bottom(2)
 
         # 1. Process Name Header
-        self.btn_col_name = self._create_header_button("Process", "name", Gtk.Align.START, hexpand=True, min_width=160)
+        self.btn_col_name = self._create_header_button("Process", "name", Gtk.Align.START, hexpand=True, min_width=150)
         self.header_row.append(self.btn_col_name)
 
-        # 2. PID Header
-        self.btn_col_pid = self._create_header_button("PID", "pid", Gtk.Align.END, width=70)
-        self.header_row.append(self.btn_col_pid)
+        # 2. Memory (RAM) Header
+        self.btn_col_mem = self._create_header_button("Memory (RAM)", "memory_bytes", Gtk.Align.END, width=135)
+        self.header_row.append(self.btn_col_mem)
 
-        # 3. User Header
-        self.btn_col_user = self._create_header_button("User", "user", Gtk.Align.START, width=85)
-        self.header_row.append(self.btn_col_user)
-
-        # 4. Status Header
-        self.btn_col_status = self._create_header_button("Status", "state", Gtk.Align.START, width=80)
-        self.header_row.append(self.btn_col_status)
-
-        # 5. CPU Usage Header (Default Sorted Descending)
+        # 3. CPU Usage Header (Default Sorted Descending)
         self.btn_col_cpu = self._create_header_button("CPU Usage ▼", "cpu_percent", Gtk.Align.END, width=95)
         self.header_row.append(self.btn_col_cpu)
 
-        # 6. Memory (RAM) Header
-        self.btn_col_mem = self._create_header_button("Memory (RAM)", "memory_bytes", Gtk.Align.END, width=140)
-        self.header_row.append(self.btn_col_mem)
+        # 4. Status Header
+        self.btn_col_status = self._create_header_button("Status", "state", Gtk.Align.START, width=75)
+        self.header_row.append(self.btn_col_status)
+
+        # 5. PID Header
+        self.btn_col_pid = self._create_header_button("PID", "pid", Gtk.Align.END, width=65)
+        self.header_row.append(self.btn_col_pid)
+
+        # 6. User Header
+        self.btn_col_user = self._create_header_button("User", "user", Gtk.Align.START, width=80)
+        self.header_row.append(self.btn_col_user)
 
         self.table_container.append(self.header_row)
 
@@ -172,20 +172,20 @@ class ProcessPage(Gtk.Box):
         detail_content.set_margin_bottom(12)
 
         self.d_stat_name = self._create_detail_row("Process Name", "--")
+        self.d_stat_mem = self._create_detail_row("Resident Memory (RAM)", "--")
+        self.d_stat_cpu = self._create_detail_row("CPU Utilization", "--")
+        self.d_stat_state = self._create_detail_row("Process State", "--")
         self.d_stat_pid = self._create_detail_row("PID / Parent PID", "--")
         self.d_stat_user = self._create_detail_row("User (UID)", "--")
-        self.d_stat_state = self._create_detail_row("Process State", "--")
-        self.d_stat_cpu = self._create_detail_row("CPU Utilization", "--")
-        self.d_stat_mem = self._create_detail_row("Resident Memory (RSS)", "--")
         self.d_stat_runtime = self._create_detail_row("Elapsed Runtime", "--")
         self.d_stat_exe = self._create_detail_row("Executable Path", "--")
 
         detail_content.append(self.d_stat_name["box"])
+        detail_content.append(self.d_stat_mem["box"])
+        detail_content.append(self.d_stat_cpu["box"])
+        detail_content.append(self.d_stat_state["box"])
         detail_content.append(self.d_stat_pid["box"])
         detail_content.append(self.d_stat_user["box"])
-        detail_content.append(self.d_stat_state["box"])
-        detail_content.append(self.d_stat_cpu["box"])
-        detail_content.append(self.d_stat_mem["box"])
         detail_content.append(self.d_stat_runtime["box"])
         detail_content.append(self.d_stat_exe["box"])
 
@@ -275,11 +275,11 @@ class ProcessPage(Gtk.Box):
         arrow = " ▼" if self.sort_descending else " ▲"
         headers = [
             (self.btn_col_name, "name"),
+            (self.btn_col_mem, "memory_bytes"),
+            (self.btn_col_cpu, "cpu_percent"),
+            (self.btn_col_status, "state"),
             (self.btn_col_pid, "pid"),
             (self.btn_col_user, "user"),
-            (self.btn_col_status, "state"),
-            (self.btn_col_cpu, "cpu_percent"),
-            (self.btn_col_mem, "memory_bytes"),
         ]
 
         for btn, field in headers:
@@ -419,10 +419,10 @@ class ProcessPage(Gtk.Box):
             row_box.set_margin_top(4)
             row_box.set_margin_bottom(4)
 
-            # 1. Process Name (Prominent, hexpand=True, min width 160)
+            # 1. Process Name (Prominent, hexpand=True, min width 150)
             name_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
             name_box.set_hexpand(True)
-            name_box.set_size_request(160, -1)
+            name_box.set_size_request(150, -1)
             name_box.set_halign(Gtk.Align.START)
 
             name_lbl = Gtk.Label(label=p["name"])
@@ -432,37 +432,17 @@ class ProcessPage(Gtk.Box):
             name_box.append(name_lbl)
             row_box.append(name_box)
 
-            # 2. PID Column (width 70, right aligned)
-            pid_lbl = Gtk.Label(label=str(p["pid"]))
-            pid_lbl.set_size_request(70, -1)
-            pid_lbl.set_halign(Gtk.Align.END)
-            pid_lbl.add_css_class("caption")
-            pid_lbl.add_css_class("dim-label")
-            row_box.append(pid_lbl)
+            # 2. Memory (RAM) Column (width 135, right aligned, with units and %)
+            mem_formatted = self._format_memory(p["memory_bytes"])
+            mem_pct = p["memory_percent"]
+            mem_lbl = Gtk.Label(label=f"{mem_formatted} ({mem_pct:.1f}%)")
+            mem_lbl.set_size_request(135, -1)
+            mem_lbl.set_halign(Gtk.Align.END)
+            mem_lbl.add_css_class("caption")
+            mem_lbl.add_css_class("dim-label")
+            row_box.append(mem_lbl)
 
-            # 3. User Column (width 85, start aligned, hidden in compact mode)
-            user_lbl = Gtk.Label(label=p["user"])
-            user_lbl.set_size_request(85, -1)
-            user_lbl.set_halign(Gtk.Align.START)
-            user_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-            user_lbl.add_css_class("caption")
-            user_lbl.add_css_class("dim-label")
-            user_lbl.set_visible(self.layout_mode != "compact")
-            row_box.append(user_lbl)
-
-            # 4. Status Column (width 80, start aligned, hidden in compact mode)
-            status_lbl = Gtk.Label(label=p["state"])
-            status_lbl.set_size_request(80, -1)
-            status_lbl.set_halign(Gtk.Align.START)
-            status_lbl.add_css_class("caption")
-            if p["state"] == "Running":
-                status_lbl.add_css_class("accent")
-            else:
-                status_lbl.add_css_class("dim-label")
-            status_lbl.set_visible(self.layout_mode != "compact")
-            row_box.append(status_lbl)
-
-            # 5. CPU Usage Column (width 95, right aligned, with % symbol)
+            # 3. CPU Usage Column (width 95, right aligned, with % symbol)
             cpu_val = p["cpu_percent"]
             cpu_lbl = Gtk.Label(label=f"{cpu_val:.1f}%")
             cpu_lbl.set_size_request(95, -1)
@@ -473,15 +453,35 @@ class ProcessPage(Gtk.Box):
                 cpu_lbl.add_css_class("accent")
             row_box.append(cpu_lbl)
 
-            # 6. Memory (RAM) Column (width 140, right aligned, with units and %)
-            mem_formatted = self._format_memory(p["memory_bytes"])
-            mem_pct = p["memory_percent"]
-            mem_lbl = Gtk.Label(label=f"{mem_formatted} ({mem_pct:.1f}%)")
-            mem_lbl.set_size_request(140, -1)
-            mem_lbl.set_halign(Gtk.Align.END)
-            mem_lbl.add_css_class("caption")
-            mem_lbl.add_css_class("dim-label")
-            row_box.append(mem_lbl)
+            # 4. Status Column (width 75, start aligned, hidden in compact mode)
+            status_lbl = Gtk.Label(label=p["state"])
+            status_lbl.set_size_request(75, -1)
+            status_lbl.set_halign(Gtk.Align.START)
+            status_lbl.add_css_class("caption")
+            if p["state"] == "Running":
+                status_lbl.add_css_class("accent")
+            else:
+                status_lbl.add_css_class("dim-label")
+            status_lbl.set_visible(self.layout_mode != "compact")
+            row_box.append(status_lbl)
+
+            # 5. PID Column (width 65, right aligned)
+            pid_lbl = Gtk.Label(label=str(p["pid"]))
+            pid_lbl.set_size_request(65, -1)
+            pid_lbl.set_halign(Gtk.Align.END)
+            pid_lbl.add_css_class("caption")
+            pid_lbl.add_css_class("dim-label")
+            row_box.append(pid_lbl)
+
+            # 6. User Column (width 80, start aligned, hidden in compact mode)
+            user_lbl = Gtk.Label(label=p["user"])
+            user_lbl.set_size_request(80, -1)
+            user_lbl.set_halign(Gtk.Align.START)
+            user_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            user_lbl.add_css_class("caption")
+            user_lbl.add_css_class("dim-label")
+            user_lbl.set_visible(self.layout_mode != "compact")
+            row_box.append(user_lbl)
 
             row.set_child(row_box)
             row.pid = p["pid"]
