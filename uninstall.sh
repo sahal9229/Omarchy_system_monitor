@@ -22,11 +22,12 @@ fi
 
 # 3. Remove Top Panel Plugin
 echo "--> Removing top-panel widget..."
+rm -rf "$HOME/.config/omarchy/plugins/sahal.sysmon"
 rm -rf "$HOME/.config/omarchy/plugins/omarchy.sysmon"
 
 SHELL_CONFIG="$HOME/.config/omarchy/shell.json"
-if [ -f "$SHELL_CONFIG" ] && grep -q '"omarchy.sysmon"' "$SHELL_CONFIG"; then
-    echo "--> Removing omarchy.sysmon from shell.json..."
+if [ -f "$SHELL_CONFIG" ] && (grep -q '"sahal.sysmon"' "$SHELL_CONFIG" || grep -q '"omarchy.sysmon"' "$SHELL_CONFIG"); then
+    echo "--> Removing sysmon from shell.json..."
     python3 - <<EOF
 import json
 
@@ -36,7 +37,7 @@ with open(config_path, "r", encoding="utf-8") as f:
 
 layout = cfg.get("bar", {}).get("layout", {})
 center_end = layout.get("centerEnd", [])
-layout["centerEnd"] = [item for item in center_end if item.get("id") != "omarchy.sysmon"]
+layout["centerEnd"] = [item for item in center_end if item.get("id") not in ("sahal.sysmon", "omarchy.sysmon")]
 
 with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)

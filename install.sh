@@ -13,7 +13,7 @@ echo "=== Installing Omarchy System Monitor ==="
 mkdir -p "$HOME/.local/bin"
 mkdir -p "$HOME/.local/share/applications"
 mkdir -p "$HOME/.local/share/icons/hicolor/scalable/apps"
-mkdir -p "$HOME/.config/omarchy/plugins/omarchy.sysmon"
+mkdir -p "$HOME/.config/omarchy/plugins/sahal.sysmon"
 mkdir -p "$HOME/.config/hypr"
 
 # 2. Install Executables into ~/.local/bin
@@ -36,8 +36,8 @@ fi
 
 # 4. Install Omarchy Top Panel Quickshell Widget
 echo "--> Installing top-panel widget..."
-cp "$SCRIPT_DIR/omarchy-plugin/manifest.json" "$HOME/.config/omarchy/plugins/omarchy.sysmon/"
-cp "$SCRIPT_DIR/omarchy-plugin/SysmonWidget.qml" "$HOME/.config/omarchy/plugins/omarchy.sysmon/"
+cp "$SCRIPT_DIR/manifest.json" "$HOME/.config/omarchy/plugins/sahal.sysmon/"
+cp "$SCRIPT_DIR/SysmonWidget.qml" "$HOME/.config/omarchy/plugins/sahal.sysmon/"
 
 SHELL_CONFIG="$HOME/.config/omarchy/shell.json"
 if [ -f "$SHELL_CONFIG" ]; then
