@@ -72,6 +72,8 @@ class TestProcessTable(unittest.TestCase):
             }
         ]
         self.page.raw_processes = list(self.sample_processes)
+        # Default to flat mode for base sorting tests
+        self.page.group_by_app = False
 
     def test_default_cpu_sorting(self):
         # Default sort should be CPU% descending
@@ -162,6 +164,59 @@ class TestProcessTable(unittest.TestCase):
         # In compact mode, User and Status columns are hidden to avoid clipping
         self.assertFalse(self.page.btn_col_user.get_visible())
         self.assertFalse(self.page.btn_col_status.get_visible())
+
+    def test_tree_ancestry_grouping_isolation(self):
+        # Enable tree grouping
+        self.page.group_by_app = True
+        
+        # Add two independent python processes (PPID 1)
+        procs = list(self.sample_processes) + [
+            {
+                "pid": 301,
+                "ppid": 1,
+                "name": "python3",
+                "exe_path": "/usr/bin/python3",
+                "cmdline": "python3 job1.py",
+                "user": "xahal",
+                "uid": 1000,
+                "cpu_percent": 10.0,
+                "memory_bytes": 1024 * 1024 * 100,
+                "memory_percent": 1.0,
+                "state": "Running",
+                "runtime_sec": 100
+            },
+            {
+                "pid": 302,
+                "ppid": 1,
+                "name": "python3",
+                "exe_path": "/usr/bin/python3",
+                "cmdline": "python3 job2.py",
+                "user": "xahal",
+                "uid": 1000,
+                "cpu_percent": 12.0,
+                "memory_bytes": 1024 * 1024 * 150,
+                "memory_percent": 1.5,
+                "state": "Running",
+                "runtime_sec": 50
+            }
+        ]
+        self.page.raw_processes = procs
+        self.page._filter_and_sort()
+
+        # PID 100 (browser) should group its child PID 120 (browser_tab)
+        browser_group = next((p for p in self.page.filtered_processes if p["pid"] == 100), None)
+        self.assertIsNotNone(browser_group)
+        self.assertTrue(browser_group.get("is_group"))
+        self.assertEqual(browser_group["child_count"], 2)
+
+        # Independent python processes PID 301 and 302 must NOT be grouped together
+        py301 = next((p for p in self.page.filtered_processes if p["pid"] == 301), None)
+        py302 = next((p for p in self.page.filtered_processes if p["pid"] == 302), None)
+        self.assertIsNotNone(py301)
+        self.assertIsNotNone(py302)
+        # Both must remain independent standalone processes
+        self.assertFalse(py301.get("is_group"))
+        self.assertFalse(py302.get("is_group"))
 
 if __name__ == "__main__":
     unittest.main()

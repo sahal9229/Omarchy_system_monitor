@@ -410,13 +410,40 @@ class ProcessPage(Gtk.Box):
             self.filtered_processes = final_list
             return
 
-        # Grouped by Application Mode (Windows Task Manager style)
-        groups = {}
+        # Process-Tree Ancestry Grouping (Windows Task Manager style):
+        # Group child processes under their true application root process via PPID ancestry.
+        # This guarantees independent programs sharing the same executable name (e.g. multiple python3, bash, or sh scripts)
+        # remain separate processes and are never inadvertently killed together.
+        pid_map = {p["pid"]: p for p in self.raw_processes}
+
+        SYSTEM_RUNNERS = {0, 1}
         for p in self.raw_processes:
-            groups.setdefault(p["name"], []).append(p)
+            if p["name"] in ("systemd", "init", "Hyprland", "sway", "waybar", "quickshell"):
+                SYSTEM_RUNNERS.add(p["pid"])
+
+        def find_app_root(p):
+            curr = p
+            while curr["ppid"] in pid_map and curr["ppid"] not in SYSTEM_RUNNERS:
+                parent = pid_map[curr["ppid"]]
+                if (parent["name"] == p["name"] or 
+                    (parent.get("exe_path") and parent["exe_path"] == p.get("exe_path")) or
+                    "zygote" in parent["name"] or 
+                    p.get("role") in ("Tab", "Tab / Renderer", "GPU Process", "Network Service", "Storage Service", "Audio Service", "Zygote", "Crashpad Handler")):
+                    curr = parent
+                else:
+                    break
+            return curr["pid"]
+
+        tree_groups = {}
+        for p in self.raw_processes:
+            root_pid = find_app_root(p)
+            tree_groups.setdefault(root_pid, []).append(p)
 
         parent_items = []
-        for name, p_list in groups.items():
+        for root_pid, p_list in tree_groups.items():
+            root_p = pid_map.get(root_pid, p_list[0])
+            name = root_p["name"]
+
             if query:
                 matching_children = [
                     p for p in p_list
@@ -428,6 +455,7 @@ class ProcessPage(Gtk.Box):
             else:
                 effective_list = p_list
 
+            grp_key = str(root_pid)
             if len(effective_list) == 1:
                 p = dict(effective_list[0])
                 p["is_group"] = False
@@ -439,9 +467,7 @@ class ProcessPage(Gtk.Box):
                 tot_mem_pct = sum(x["memory_percent"] for x in effective_list)
                 tot_cpu = sum(x["cpu_percent"] for x in effective_list)
 
-                # Find root / main process
-                root = next((x for x in effective_list if x.get("role") == "Main Process"), min(effective_list, key=lambda x: x["pid"]))
-                is_expanded = (name in self.expanded_groups) or bool(query)
+                is_expanded = (grp_key in self.expanded_groups) or bool(query)
 
                 # Sort children by memory or cpu descending
                 children_sorted = list(effective_list)
@@ -451,22 +477,22 @@ class ProcessPage(Gtk.Box):
                 )
 
                 parent_items.append({
-                    "pid": root["pid"],
+                    "pid": root_pid,
                     "name": f"{name} ({len(effective_list)})",
                     "base_name": name,
                     "display_name": f"{name} ({len(effective_list)})",
-                    "user": root["user"],
-                    "uid": root["uid"],
+                    "user": root_p["user"],
+                    "uid": root_p["uid"],
                     "state": "Running" if any(x["state"] == "Running" for x in effective_list) else "Sleeping",
                     "cpu_percent": round(tot_cpu, 1),
                     "memory_bytes": tot_mem,
                     "memory_percent": round(tot_mem_pct, 1),
                     "runtime_sec": max(x["runtime_sec"] for x in effective_list),
-                    "exe_path": root["exe_path"],
-                    "cmdline": root["cmdline"],
+                    "exe_path": root_p["exe_path"],
+                    "cmdline": root_p["cmdline"],
                     "is_group": True,
                     "is_expanded": is_expanded,
-                    "group_key": name,
+                    "group_key": grp_key,
                     "children": children_sorted,
                     "child_count": len(effective_list),
                 })
@@ -849,11 +875,14 @@ class ProcessPage(Gtk.Box):
 
         root_win = self.get_root()
         if is_grp:
-            heading = f"End Application '{p_name}' ({child_count} tasks)?"
-            body = f"Ending this application will terminate its root process {pid} and all {child_count} child tasks."
+            heading = f"End Application '{p_name}' (PID {pid}, {child_count} tasks)?"
+            body = (
+                f"Ending this application will terminate root process {pid} and its {child_count - 1} verified child tasks.\n"
+                f"Unrelated processes and independent instances sharing the same name are not affected."
+            )
             term_btn_label = f"End Application ({child_count} tasks)"
         else:
-            heading = f"End Process '{p_name}'?"
+            heading = f"End Process '{p_name}' (PID {pid})?"
             body = f"Ending process {pid} will terminate it immediately. Default is graceful SIGTERM shutdown."
             term_btn_label = "End Process (SIGTERM)"
 
