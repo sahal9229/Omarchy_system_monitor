@@ -4,7 +4,7 @@
   "name": "System Monitor",
   "version": "1.0.0",
   "author": "sahal",
-  "description": "System resource monitor bar button and telemetry dashboard for Omarchy",
+  "description": "Real-time system telemetry and process manager. Quick install: omarchy plugin add https://github.com/sahal9229/Omarchy_system_monitor",
   "kinds": [
     "bar-widget"
   ],
