@@ -1,5 +1,7 @@
 # Omarchy System Monitor
 
+![Omarchy System Monitor Preview](preview.png)
+
 A lightweight, native-feeling system monitoring desktop application for **Omarchy Linux (Arch Linux-based)**, inspired by the clean layout and real-time visualization of Windows 11 Task Manager.
 
 Omarchy System Monitor provides real-time system resource telemetry, processor frequencies, memory breakdowns, GPU activity, disk read/write rates, network bandwidth, battery telemetry, process management with safe termination, and read-only hardware temperatures and fan speeds.
