@@ -102,6 +102,8 @@ class MainWindow(Adw.ApplicationWindow):
         sidebar_page.set_title("System Monitor")
         self.split_view.set_sidebar(sidebar_page)
 
+        self.stack.set_visible_child_name("dashboard")
+
         content_page = Adw.NavigationPage.new(self.stack, "Content")
         self.split_view.set_content(content_page)
 
