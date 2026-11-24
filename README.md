@@ -43,6 +43,18 @@ cd Omarchy_system_monitor
 
 ---
 
+### 📸 Screenshots
+
+| System Overview | Process Manager |
+|:---:|:---:|
+| ![Overview](docs/screenshots/overview.png) | ![Processes](docs/screenshots/processes.png) |
+
+| CPU & Core Utilization | GPU Activity & Specs | Network Traffic |
+|:---:|:---:|:---:|
+| ![CPU](docs/screenshots/cpu.jpg) | ![GPU](docs/screenshots/gpu.jpg) | ![Network](docs/screenshots/network.jpg) |
+
+---
+
 ### 🗑️ Uninstallation
 
 ```bash
