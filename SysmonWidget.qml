@@ -10,6 +10,11 @@ BarWidget {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  function getToggleScript() {
+    var local = decodeURIComponent(Qt.resolvedUrl("bin/omarchy-sysmon-toggle").toString().replace(/^file:\/\//, ""))
+    return local
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
@@ -18,7 +23,9 @@ BarWidget {
     slotSize: Style.bar.statusSlot
     tooltipText: "Omarchy System Monitor"
     onPressed: function(b) {
-      if (root.bar) root.bar.run("omarchy-sysmon-toggle")
+      if (root.bar) {
+        root.bar.run(root.getToggleScript())
+      }
     }
   }
 }

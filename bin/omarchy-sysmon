@@ -10,7 +10,6 @@ real_script_path = os.path.realpath(__file__)
 candidate_paths = [
     os.path.dirname(os.path.dirname(real_script_path)),
     os.environ.get("OMARCHY_SYSMON_PATH", ""),
-    "/home/xahal/Documents/omarchy/omarchy-sysmon",
 ]
 
 for p in candidate_paths:

@@ -13,10 +13,12 @@ if command -v hyprctl &>/dev/null; then
 fi
 
 # Fallback: Launch application (GApplication handles single-instance automatically)
-if [ -x "$(dirname "$0")/omarchy-sysmon" ]; then
-    exec "$(dirname "$0")/omarchy-sysmon" "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -x "$SCRIPT_DIR/omarchy-sysmon" ]; then
+    exec "$SCRIPT_DIR/omarchy-sysmon" "$@"
 elif command -v omarchy-sysmon &>/dev/null; then
     exec omarchy-sysmon "$@"
 else
-    exec python3 "/home/xahal/Documents/omarchy/omarchy-sysmon/bin/omarchy-sysmon" "$@"
+    echo "Error: omarchy-sysmon executable not found." >&2
+    exit 1
 fi
